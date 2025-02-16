@@ -1,23 +1,28 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <math.h>
-#include "./Lab1_material/pgmio.h"
+#include "../hist&conv/pgmio.h"
 
 #define ROWS 3
 #define COLS 3
 
-float convulucion(float *matriz, int kernel[3][3], int width, int height, int row, int col) {
-    int mid_row = ROWS / 2;
-    int mid_col = COLS / 2;
-    int start_row = row - mid_row;
-    int start_col = col - mid_col;
+#define MOD 10
+#define MODO_PRUEBA 1 //CAMBIAR A 0 SI SE QUIERE PROBAR CON UN KERNEL  DISTINTO AL DEL ENUNCIADO
+
+void initKernel(int**kernel,int size);
+void initKernelPrueba(int**kernel);
+
+float convulucion(float *matriz, int* kernel, int width, int height, int matrix_row, int matrix_col,int kernel_size) {
+    int mid = kernel_size/ 2;
+    int start_row = matrix_row- mid;
+    int start_col = matrix_col- mid;
 
     float sum = 0;
 
-    for (int i = start_row, a = 0; a < ROWS; i++, a++) {
-        for (int j = start_col, b = 0; b < COLS; j++, b++) {
+    for (int i = start_row, a = 0; a < kernel_size; i++, a++) {
+        for (int j = start_col, b = 0; b < kernel_size; j++, b++) {
             if (i >= 0 && i < height && j >= 0 && j < width) {
-                sum += matriz[i *height + j] * kernel[a][b];
+                sum += matriz[i *height + j] * kernel[a*kernel_size+b];
             }
         }
     }
@@ -26,34 +31,71 @@ float convulucion(float *matriz, int kernel[3][3], int width, int height, int ro
 }
 
 int main(int argc, char *argv[]) {
-    int kernel[ROWS][COLS]= {
-        {0, -1 ,0},
-        {-1, 5, -1},
-        {0, -1, 0}
-    };
+    
     // check for arguments
     if (argc < 2) {
-    	printf("Use %s file.pgm\n", argv[0]);
+    	printf("Use %s file.pgm [KERNEL_TAM]\n", argv[0]);
         exit(EXIT_FAILURE);
     }
+    int *kernel;
+    int size = 3;
+    if(argc ==3){
+        size = atoi(argv[2]);
+    }
 
+    if(MODO_PRUEBA){
+        size = 3;
+        initKernelPrueba(&kernel);
+    }else{
+        initKernel(&kernel,size);
+    }
+        printf("Size: %d*%d\n",size,size);
+    for(int i = 0;i<size;i++){
+        for(int j = 0;j<size;j++){
+            printf("%d ",kernel[i*size +j]);
+        }
+        printf("\n");
+    }
+    
+    
     // image width x height
     int width, height;
 
     // Load pgm image
     float* xu8 = loadPGM32(argv[1], &width, &height);
-    float* temp = malloc(sizeof(float) * width * height);
+    float* salida = malloc(sizeof(float) * width * height);
 
     for (int i = 0; i < height; i++) {
         for (int j = 0; j < width; j++) {
-          temp[i * height + j] = convulucion(xu8, kernel, width, height, i, j );
+          salida[i * height + j] = convulucion(xu8, kernel, width, height, i, j,size );
         }
     }
 
-    savePGM32("hola.pgm", temp,  width,  height);
-
+    savePGM32("hola.pgm", salida,  width,  height);
     free(xu8);
-    free(temp);
+    free(salida);
+    free(kernel);
 
     return EXIT_SUCCESS;
 }
+
+
+void initKernel(int**kernel,int size){
+    (*kernel)=(int*)malloc(sizeof(int)*size*size);
+    for(int i = 0;i<size;i++){
+        for(int j = 0;j<size;j++){
+            (*kernel)[i*size +j] = rand()%MOD;
+        }
+    }
+}
+
+void initKernelPrueba(int** kernel) {
+    (*kernel)=(int*)malloc(sizeof(int)*9);
+
+    int valores[9] = {0, -1, 0, -1, 5, -1, 0, -1, 0};
+    for (int i = 0; i < 9; i++) {
+        (*kernel)[i] = valores[i];
+    }
+}
+
+
