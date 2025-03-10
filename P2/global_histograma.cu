@@ -53,6 +53,10 @@ int main(int argc, char *argv[])
 
     cudaMemcpy(h_hist,v_hist,SIZE*sizeof(int),cudaMemcpyDeviceToHost);
 
+    for (int i = 0; i<SIZE; i++) {
+        printf("%i ",h_hist[i]); 
+    }
+    printf("\n");
     free(h_xu8);
     cudaFree(v_xu8);
     cudaFree(v_hist);

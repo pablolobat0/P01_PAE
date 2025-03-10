@@ -5,7 +5,7 @@
 #include <math.h>
 
 // The file loadPGM.h will be used for defining load and export functions
-#include "../pgmio.h"
+#include "pgmio.h"
 
 #define SIZE 256
 #define BLOCK_SIZE 1024
@@ -64,13 +64,20 @@ int main(int argc, char *argv[])
     histograma<<<blockCount,blockDim>>>(v_xu8, v_hist, w*h);
     cudaDeviceSynchronize();
      
+    cudaMemcpy(h_hist,v_hist,SIZE*sizeof(int),cudaMemcpyDeviceToHost);
+    
     cudaError_t err = cudaGetLastError();
     if (err != cudaSuccess) {
         printf("CUDA error: %s\n", cudaGetErrorString(err));
     }
 
+    cudaDeviceSynchronize();
+    for (int i = 0; i<SIZE; i++) {
+            printf("%i ",h_hist[i]); 
+        }
+        printf("\n");
 
-    cudaMemcpy(h_hist,v_hist,SIZE*sizeof(int),cudaMemcpyDeviceToHost);
+
 
     free(h_xu8);
     cudaFree(v_xu8);
