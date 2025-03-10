@@ -1,5 +1,4 @@
 #include <cstdio>
-#include <iostream>
 #include <assert.h>
 #include <math.h>
 
@@ -37,10 +36,9 @@ int main(void)
     // Wait for GPU to finish before accessing on host
     cudaDeviceSynchronize();
 
-    // Check for errors (all values should be 3.0f)
     for (int i = 0; i < N; i++)
         assert(y[i] == x[i]*ALPHA);
-
+    printf("Correct!\n");
     // Free memory
     cudaFree(x);
     cudaFree(y);
