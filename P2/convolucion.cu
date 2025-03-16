@@ -3,6 +3,7 @@
 #include <fstream>
 #include <vector>
 #include <cuda_runtime.h>
+#include <sys/time.h>
 
 #define CHECK_CUDA(call) \
     { \
@@ -51,9 +52,12 @@ int main() {
         std::cerr << "Error al cargar la imagen." << std::endl;
         return EXIT_FAILURE;
     }
-
+    struct timeval ex_start, ex_finish, init_start, init_finish;
     // Definir un kernel de convolución (Ejemplo: Detector de bordes Sobel)
     const int kernelSize = 3;
+
+
+    gettimeofday(&init_start, NULL);
     float h_kernel[kernelSize * kernelSize] = {
         -1, -1, -1,
         -1,  8, -1,
@@ -76,6 +80,9 @@ int main() {
     NppiSize maskSize = { kernelSize, kernelSize }; //el kernel
     NppiPoint anchor = { kernelSize / 2, kernelSize / 2 }; //  Punto central del kernel
 
+    gettimeofday(&init_finish, NULL);
+
+    gettimeofday(&ex_start, NULL);
     // Ejecutar convolución con NPP
     nppiFilter_8u_C1R(
         d_src, width * sizeof(Npp8u),
@@ -87,6 +94,7 @@ int main() {
         anchor
     );
 
+    gettimeofday(&ex_finish, NULL);
     // Copiar resultado de vuelta a CPU
     std::vector<unsigned char> hostOutput(width * height);
     CHECK_CUDA(cudaMemcpy(hostOutput.data(), d_dst, width * height * sizeof(Npp8u), cudaMemcpyDeviceToHost));
@@ -96,6 +104,19 @@ int main() {
         std::cerr << "Error al guardar la imagen." << std::endl;
         return EXIT_FAILURE;
     }
+    
+    time = (init_finish.tv_sec - init_start.tv_sec +
+            (init_finish.tv_usec - init_start.tv_usec) / 1.e6);
+
+    printf("Reserva de memoria: %.10lf\n", time);
+
+    time = (ex_finish.tv_sec - ex_start.tv_sec +
+            (ex_finish.tv_usec - ex_start.tv_usec) / 1.e6);
+
+    printf("Tiempo de Ejecucion: %.10lf\n", time);
+
+
+
 
     // Liberar memoria GPU
     cudaFree(d_src);
