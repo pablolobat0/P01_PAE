@@ -1,128 +1,98 @@
-#include <npp.h>
+#include <nppi.h>
 #include <iostream>
 #include <fstream>
 #include <vector>
 #include <cuda_runtime.h>
 #include <sys/time.h>
+#include "pgmio.h"
 
-#define CHECK_CUDA(call) \
-    { \
-        cudaError_t err = call; \
-        if (err != cudaSuccess) { \
-            std::cerr << "CUDA error in " << __FILE__ << " at line " << __LINE__ << ": " \
-                      << cudaGetErrorString(err) << std::endl; \
-            exit(EXIT_FAILURE); \
-        } \
-    }
+#define MODO_PRUEBA 1
+#define MOD 10
 
-// Función para cargar imágenes PGM
-bool loadPGM(const std::string &filename, std::vector<unsigned char> &image, int &width, int &height) {
-    std::ifstream file(filename, std::ios::binary);
-    if (!file) return false;
+void initKernel(float** kernel, int size);
+void initKernelPrueba(float** kernel);
 
-    std::string magic;
-    file >> magic;
-    if (magic != "P5") return false;
-
-    file >> width >> height;
-    int maxVal;
-    file >> maxVal;
-    file.ignore(); // Ignorar un espacio en blanco
-
-    image.resize(width * height);
-    file.read(reinterpret_cast<char*>(image.data()), width * height);
-    return true;
+double get_time() {
+    struct timeval tv;
+    gettimeofday(&tv, NULL);
+    return tv.tv_sec + tv.tv_usec / 1e6;
 }
 
-// Función para guardar imágenes PGM
-bool savePGM(const std::string &filename, const std::vector<unsigned char> &image, int width, int height) {
-    std::ofstream file(filename, std::ios::binary);
-    if (!file) return false;
-
-    file << "P5\n" << width << " " << height << "\n255\n";
-    file.write(reinterpret_cast<const char*>(image.data()), width * height);
-    return true;
-}
-
-int main() {
-    // Cargar imagen PGM
-    int width, height;
-    std::vector<unsigned char> hostImage;
-    if (!loadPGM("input.pgm", hostImage, width, height)) {
-        std::cerr << "Error al cargar la imagen." << std::endl;
-        return EXIT_FAILURE;
+int main(int argc, char *argv[]) {
+    if (argc < 2) {
+        printf("Use %s file.pgm [KERNEL_TAM]\n", argv[0]);
+        exit(EXIT_FAILURE);
     }
-    struct timeval ex_start, ex_finish, init_start, init_finish;
-    // Definir un kernel de convolución (Ejemplo: Detector de bordes Sobel)
-    const int kernelSize = 3;
 
-
-    gettimeofday(&init_start, NULL);
-    float h_kernel[kernelSize * kernelSize] = {
-        -1, -1, -1,
-        -1,  8, -1,
-        -1, -1, -1
-    };
-
-    // Alojar memoria en GPU para imagen y kernel
-    Npp8u *d_src, *d_dst;
-    Npp32f *d_kernel;
-    CHECK_CUDA(cudaMalloc((void**)&d_src, width * height * sizeof(Npp8u)));
-    CHECK_CUDA(cudaMalloc((void**)&d_dst, width * height * sizeof(Npp8u)));
-    CHECK_CUDA(cudaMalloc((void**)&d_kernel, kernelSize * kernelSize * sizeof(Npp32f)));
-
-    // Copiar datos a la GPU
-    CHECK_CUDA(cudaMemcpy(d_src, hostImage.data(), width * height * sizeof(Npp8u), cudaMemcpyHostToDevice));
-    CHECK_CUDA(cudaMemcpy(d_kernel, h_kernel, kernelSize * kernelSize * sizeof(Npp32f), cudaMemcpyHostToDevice));
-
-    // Definir ROI (Región de Interés)
-    NppiSize srcSize = { width, height }; //  Toda la imagen
-    NppiSize maskSize = { kernelSize, kernelSize }; //el kernel
-    NppiPoint anchor = { kernelSize / 2, kernelSize / 2 }; //  Punto central del kernel
-
-    gettimeofday(&init_finish, NULL);
-
-    gettimeofday(&ex_start, NULL);
-    // Ejecutar convolución con NPP
-    nppiFilter_8u_C1R(
-        d_src, width * sizeof(Npp8u),
-        srcSize,
-        {0, 0}, // ROI offset
-        d_dst, width * sizeof(Npp8u),
-        maskSize,
-        d_kernel,
-        anchor
-    );
-
-    gettimeofday(&ex_finish, NULL);
-    // Copiar resultado de vuelta a CPU
-    std::vector<unsigned char> hostOutput(width * height);
-    CHECK_CUDA(cudaMemcpy(hostOutput.data(), d_dst, width * height * sizeof(Npp8u), cudaMemcpyDeviceToHost));
-
-    // Guardar la imagen de salida
-    if (!savePGM("output.pgm", hostOutput, width, height)) {
-        std::cerr << "Error al guardar la imagen." << std::endl;
-        return EXIT_FAILURE;
+    float *kernel;
+    int size = 3;
+    if (argc == 3) {
+        size = atoi(argv[2]);
     }
     
-    time = (init_finish.tv_sec - init_start.tv_sec +
-            (init_finish.tv_usec - init_start.tv_usec) / 1.e6);
+    int width, height;
+    float* h_src = loadPGM32(argv[1], &width, &height);
+    float* h_dst = (float*)malloc(sizeof(float) * width * height);
+    
+    if (MODO_PRUEBA) {
+        size = 3;
+        initKernelPrueba(&kernel);
+    } else {
+        initKernel(&kernel, size * size);
+    }
 
-    printf("Reserva de memoria: %.10lf\n", time);
+    double init_start = get_time();
+    float *d_src, *d_dst, *d_kernel;
+    cudaMalloc((void**)&d_src, sizeof(float) * width * height);
+    cudaMalloc((void**)&d_dst, sizeof(float) * width * height);
+    cudaMalloc((void**)&d_kernel, sizeof(float) * size * size);
 
-    time = (ex_finish.tv_sec - ex_start.tv_sec +
-            (ex_finish.tv_usec - ex_start.tv_usec) / 1.e6);
+    cudaMemcpy(d_src, h_src, sizeof(float) * width * height, cudaMemcpyHostToDevice);
+    cudaMemcpy(d_kernel, kernel, sizeof(float) * size * size, cudaMemcpyHostToDevice);
+    double init_end = get_time();
 
-    printf("Tiempo de Ejecucion: %.10lf\n", time);
+    NppiSize oROI;
+    oROI.width = width;
+    oROI.height = height;
+    NppiSize oMaskSize = {size, size};
+    NppiPoint oAnchor = {size / 2, size / 2};
 
+    double ex_start = get_time();
+    NppStatus status = nppiFilter_32f_C1R(
+        d_src, width * sizeof(Npp32f),
+        d_dst, width * sizeof(Npp32f),
+        oROI,
+        d_kernel, oMaskSize, oAnchor
+    );
+    cudaDeviceSynchronize();
+    double ex_end = get_time();
 
+    cudaMemcpy(h_dst, d_dst, sizeof(float) * width * height, cudaMemcpyDeviceToHost);
 
-
-    // Liberar memoria GPU
     cudaFree(d_src);
     cudaFree(d_dst);
     cudaFree(d_kernel);
+    free(h_src);
+    free(h_dst);
+    free(kernel);
 
-    std::cout << "Convolución completada. Imagen guardada como output.pgm" << std::endl;
+    printf("Initialization Time: %f seconds\n", init_end - init_start);
+    printf("Execution Time: %f seconds\n", ex_end - ex_start);
+
     return 0;
+}
+
+void initKernel(float** kernel, int size) {
+    (*kernel) = (float*)malloc(sizeof(float) * size);
+    for (int i = 0; i < size; i++) {
+        (*kernel)[i] = (rand() % MOD) / (float)MOD;
+    }
+}
+
+void initKernelPrueba(float** kernel) {
+    (*kernel) = (float*)malloc(sizeof(float) * 9);
+    float valores[9] = {0, -1, 0, -1, 5, -1, 0, -1, 0};
+    for (int i = 0; i < 9; i++) {
+        (*kernel)[i] = valores[i];
+    }
 }
