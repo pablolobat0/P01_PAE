@@ -29,8 +29,8 @@ int main(int argc, char* argv[])
     {
         tid = omp_get_thread_num();
         #pragma omp for private(j) 
-        for (i=0;i<20;i++){
-            for(j=0;j<20;j++){
+        for (i=0;i<height;i++){
+            for(j=0;j<height;j++){
                 //Funcion de convolucion
 
                 int mid = size/ 2;
